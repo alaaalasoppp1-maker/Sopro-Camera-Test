@@ -91,14 +91,21 @@ Java_com_dtdc_soprotest_MainActivity_nativeReadIso(
     std::vector<unsigned char> out;
     out.reserve(total);
 
+    size_t packetOffset = 0;
     for (int i = 0; i < packetCount; i++) {
         auto &d = completed->iso_frame_desc[i];
         int n = d.actual_length;
-        if (d.status != 0 || n <= 0) continue;
-        out.push_back((unsigned char)(n & 0xff));
-        out.push_back((unsigned char)((n >> 8) & 0xff));
-        unsigned char* p = buf + d.offset;
-        out.insert(out.end(), p, p + n);
+
+        // usbdevfs_iso_packet_desc does NOT expose an offset member.
+        // ISO packet buffers are laid out consecutively according to each
+        // packet's requested length.
+        if (d.status == 0 && n > 0) {
+            out.push_back((unsigned char)(n & 0xff));
+            out.push_back((unsigned char)((n >> 8) & 0xff));
+            unsigned char* p = buf + packetOffset;
+            out.insert(out.end(), p, p + n);
+        }
+        packetOffset += d.length;
     }
 
     jbyteArray arr = env->NewByteArray((jsize)out.size());

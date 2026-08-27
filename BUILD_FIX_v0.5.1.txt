@@ -1,0 +1,9 @@
+v0.5.1 build fix
+
+The v0.5 native ISO reader incorrectly referenced `usbdevfs_iso_packet_desc.offset`.
+Linux/Android's usbdevfs_iso_packet_desc has no offset field.
+
+The buffer position is now calculated cumulatively from each packet descriptor's
+requested `length`, which matches usbfs ISO URB buffer layout.
+
+No camera behavior or UI workflow was removed.

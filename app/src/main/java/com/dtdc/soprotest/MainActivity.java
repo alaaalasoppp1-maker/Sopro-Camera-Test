@@ -83,7 +83,7 @@ public class MainActivity extends Activity {
         findViewById(R.id.btnRetry).setOnClickListener(v -> startCamera(true));
         findViewById(R.id.btnCopyLog).setOnClickListener(v -> copyLog());
 
-        append("Sopro Camera Player v0.5");
+        append("Sopro Camera Player v0.5.1");
         append("Target EB1A:2821 / EM2820-family");
         append("Includes corrected EM28xx I2C addressing + native ISO 0x82 engine.");
         scan();
