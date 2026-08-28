@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Sopro/eMPIA camera detected from Windows:
-         VID EB1A / PID 2821 -->
-    <usb-device vendor-id="60186" product-id="10273" />
-</resources>
