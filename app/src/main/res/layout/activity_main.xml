@@ -131,7 +131,7 @@
                     android:id="@+id/btnSource"
                     android:layout_width="match_parent"
                     android:layout_height="50dp"
-                    android:text="SOURCE REG02: 0xC2"/>
+                    android:text="SOURCE: COMPOSITE2"/>
 
                 <Button
                     android:id="@+id/btnFieldMode"
@@ -156,6 +156,13 @@
                     android:layout_width="match_parent"
                     android:layout_height="50dp"
                     android:text="HUE: 0x00"/>
+
+                <Button
+                    android:id="@+id/btnStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:text="READ DECODER STATUS"/>
+
 
 
             <Space

@@ -37,11 +37,18 @@ public class MainActivity extends Activity {
     // 0=AUTO, 1=YUYV, 2=YVYU, 3=UYVY, 4=VYUY
     private int colorMode = 0;
     private Button btnColor;
-    private Button btnSource, btnFieldMode, btnPolarity, btnSaturation, btnHue;
+    private Button btnSource, btnFieldMode, btnPolarity, btnSaturation, btnHue, btnStatus;
     // Live tuning state. These controls change the running decoder/renderer
     // without rebuilding another APK.
-    private int sourceIndex = 2; // starts at current SAA7113 reg 0x02 = 0xC2
-    private final int[] sourceValues = {0xC0, 0xC1, 0xC2, 0xC3};
+    // Linux SAA711x routing uses input IDs 0..3 for Composite0..3 and
+    // 6..9 for S-Video0..3. v0.5.5 only changed 0xC0..0xC3, so it never
+    // actually selected an S-Video/Y-C route.
+    private int sourceIndex = 2;
+    private final int[] sourceIds = {0,1,2,3,6,7,8,9};
+    private final String[] sourceNames = {
+            "COMPOSITE0","COMPOSITE1","COMPOSITE2","COMPOSITE3",
+            "SVIDEO0","SVIDEO1","SVIDEO2","SVIDEO3"
+    };
     private int fieldMode = 0; // 0=alternate BOB, 1=top only, 2=bottom only, 3=weave
     private boolean invertFieldPolarity = false;
     private int saturationIndex = 2;
@@ -106,16 +113,18 @@ public class MainActivity extends Activity {
         btnPolarity = findViewById(R.id.btnPolarity);
         btnSaturation = findViewById(R.id.btnSaturation);
         btnHue = findViewById(R.id.btnHue);
+        btnStatus = findViewById(R.id.btnStatus);
 
         btnSource.setOnClickListener(v -> cycleSourceMode());
         btnFieldMode.setOnClickListener(v -> cycleFieldMode());
         btnPolarity.setOnClickListener(v -> toggleFieldPolarity());
         btnSaturation.setOnClickListener(v -> cycleSaturation());
         btnHue.setOnClickListener(v -> cycleHue());
+        btnStatus.setOnClickListener(v -> readDecoderStatus());
 
         findViewById(R.id.btnCopyLog).setOnClickListener(v -> copyLog());
 
-        append("Sopro Camera Player v0.5.5");
+        append("Sopro Camera Player v0.5.6");
         append("Target EB1A:2821 / EM2820-family");
         append("Includes corrected EM28xx I2C addressing + native ISO 0x82 engine.");
         scan();
@@ -466,7 +475,7 @@ public class MainActivity extends Activity {
         if ("SAA7113".equals(p) || "SOPRO_NTSC".equals(p) || "SOPRO_PAL".equals(p)) {
             // Linux saa7113_init table, sent to 7-bit 0x25 (raw USB index 0x4A)
             int[][] t = {
-                    {0x01,0x08},{0x02,sourceValues[sourceIndex]},{0x03,0x30},{0x04,0x00},{0x05,0x00},
+                    {0x01,0x08},{0x02,routeReg02Value(sourceIds[sourceIndex])},{0x03,0x30},{0x04,0x00},{0x05,0x00},
                     {0x06,0x89},{0x07,0x0D},{0x08,0x88},{0x09,0x01},{0x0A,0x80},
                     {0x0B,0x47},{0x0C,0x40},{0x0D,0x00},{0x0E,0x01},{0x0F,0x2A},
                     {0x10,0x08},{0x11,0x0C},{0x12,0x07},{0x13,0x00},{0x14,0x00},
@@ -476,6 +485,10 @@ public class MainActivity extends Activity {
             for (int[] rv: t) if (i2cWriteReg8(0x25, rv[0], rv[1])) good++;
             append("SAA7113 writes ACK = "+good+"/"+t.length);
             ok &= good >= 16;
+
+            // Apply complete Linux-style routing, including chroma-trap bypass
+            // for S-Video/Y-C modes.
+            ok &= applySourceRoute(sourceIds[sourceIndex]);
 
             if ("SOPRO_NTSC".equals(p)) {
                 // Linux SAA7113 525/60 selection: clear auto-detect and set FSEL.
@@ -553,16 +566,41 @@ public class MainActivity extends Activity {
     private String hex(int v){ return v<0 ? "ERR" : String.format(Locale.US,"0x%02X",v); }
 
 
+    private int routeReg02Value(int inputId) {
+        int cur = i2cReadReg8(0x25, 0x02);
+        if (cur < 0) cur = 0xC0;
+        return (cur & 0xF0) | (inputId & 0x0F);
+    }
+
+    private boolean applySourceRoute(int inputId) {
+        int reg02 = routeReg02Value(inputId);
+        boolean ok1 = i2cWriteReg8(0x25, 0x02, reg02);
+
+        int r09 = i2cReadReg8(0x25, 0x09);
+        if (r09 < 0) r09 = 0x01;
+
+        // Linux saa711x_s_routing bypasses the chrominance trap for S-Video.
+        boolean isSVideo = inputId >= 6;
+        int new09 = (r09 & 0x7F) | (isSVideo ? 0x80 : 0x00);
+        boolean ok2 = i2cWriteReg8(0x25, 0x09, new09);
+
+        append(String.format(Locale.US,
+                "Route %s: REG02=0x%02X REG09=0x%02X result=%s",
+                sourceNames[sourceIndex], reg02, new09, (ok1 && ok2)));
+        return ok1 && ok2;
+    }
+
     private void cycleSourceMode() {
-        sourceIndex = (sourceIndex + 1) % sourceValues.length;
-        int v = sourceValues[sourceIndex];
-        if (conn != null) {
-            boolean ok = i2cWriteReg8(0x25, 0x02, v);
-            append(String.format(Locale.US,
-                    "Live source mux REG02 -> 0x%02X result=%s", v, ok));
-        }
+        sourceIndex = (sourceIndex + 1) % sourceIds.length;
+        int inputId = sourceIds[sourceIndex];
+
+        if (conn != null) applySourceRoute(inputId);
+
         if (btnSource != null)
-            btnSource.setText(String.format(Locale.US, "SOURCE REG02: 0x%02X", v));
+            btnSource.setText("SOURCE: " + sourceNames[sourceIndex]);
+
+        append("Source route changed to " + sourceNames[sourceIndex] +
+                " (Linux input id " + inputId + ")");
     }
 
     private void cycleFieldMode() {
@@ -603,6 +641,26 @@ public class MainActivity extends Activity {
         }
         if (btnHue != null)
             btnHue.setText(String.format(Locale.US, "HUE: 0x%02X", v));
+    }
+
+
+    private void readDecoderStatus() {
+        int r1e = i2cReadReg8(0x25, 0x1E);
+        int r1f = i2cReadReg8(0x25, 0x1F);
+        int r08 = i2cReadReg8(0x25, 0x08);
+        int r09 = i2cReadReg8(0x25, 0x09);
+        int r02 = i2cReadReg8(0x25, 0x02);
+
+        String freq = (r1f >= 0 && (r1f & 0x20) != 0) ? "60Hz" : "50Hz";
+        boolean signalOk = r1f >= 0 && ((r1f & 0xC1) == 0x81);
+
+        append(String.format(Locale.US,
+                "DECODER STATUS: R02=0x%02X R08=0x%02X R09=0x%02X R1E=0x%02X R1F=0x%02X signal=%s freq=%s route=%s",
+                r02, r08, r09, r1e, r1f,
+                signalOk ? "OK" : "BAD/UNKNOWN", freq, sourceNames[sourceIndex]));
+
+        if (btnStatus != null)
+            btnStatus.setText("STATUS: " + (signalOk ? "SIGNAL OK" : "CHECK") + " / " + freq);
     }
 
     private void cycleColorMode() {

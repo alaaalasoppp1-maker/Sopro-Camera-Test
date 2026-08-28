@@ -1,0 +1,36 @@
+v0.5.6 Routing Fix
+
+Key discovery:
+v0.5.5 never actually selected S-Video. It only changed SAA7113 REG02 between
+0xC0, 0xC1, 0xC2 and 0xC3. In Linux saa711x routing, those are only
+Composite0..Composite3.
+
+The real S-Video input IDs are:
+  6 = SVIDEO0
+  7 = SVIDEO1
+  8 = SVIDEO2
+  9 = SVIDEO3
+
+Linux also sets bit 0x80 in SAA7113 register 0x09 for S-Video to bypass the
+chrominance trap. v0.5.6 now performs both parts of the route change.
+
+SOURCE button now cycles:
+  COMPOSITE0
+  COMPOSITE1
+  COMPOSITE2
+  COMPOSITE3
+  SVIDEO0
+  SVIDEO1
+  SVIDEO2
+  SVIDEO3
+
+Also added READ DECODER STATUS, which logs SAA7113 status registers 0x1E/0x1F,
+signal lock and detected 50/60 Hz.
+
+Recommended test:
+1. CONNECT -> START CAMERA.
+2. Leave field/color controls alone initially.
+3. Cycle SOURCE slowly through all 8 routes.
+4. Pause 2-3 seconds on each route.
+5. Look specifically for the SVIDEO route that removes red cast/ghost image.
+6. Press READ DECODER STATUS on the best-looking route and send only that line.
