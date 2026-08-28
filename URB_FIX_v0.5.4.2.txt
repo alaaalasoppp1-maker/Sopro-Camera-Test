@@ -1,0 +1,21 @@
+v0.5.4.2
+
+Fixes the current failure:
+  Persistent ISO queue start = false errno=12
+
+errno 12 = ENOMEM. The fixed 32-packet x 6-URB queue is too large/unreliable
+for this Android usbfs implementation.
+
+Changes:
+- automatically tries progressively smaller continuous ISO queues
+- keeps the multi-URB streaming design; it does NOT return to one-URB-at-a-time
+- removes the unstable full/common I2C sweep at every START
+- uses the already-confirmed decoder address 0x25 directly
+- keeps NTSC 720x480 first, PAL fallback
+- keeps the right control-panel ScrollView
+- keeps color mode and deinterlacing controls
+
+Expected successful log:
+  ISO queue try packets=... urbs=... result=true
+  ✓ ISO queue accepted: ...
+  Persistent ISO queue final result = true

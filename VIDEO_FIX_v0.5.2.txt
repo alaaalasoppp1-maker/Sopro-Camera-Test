@@ -1,0 +1,13 @@
+v0.5.2 fixes the no-preview bug.
+
+v0.5.1 proved that the camera, EM2820 bridge, SAA7113 and ISO endpoint were alive,
+but it selected video alternate setting 1, which only provides 1024 bytes per
+microframe. Full analog video needs much more bandwidth.
+
+This version decodes high-bandwidth wMaxPacketSize correctly and selects the
+highest-bandwidth alternate setting. On this camera raw 0x1400 decodes to
+1024 * 3 = 3072 bytes per microframe.
+
+It also configures EM28xx capture geometry explicitly and tries PAL 720x576
+and NTSC 720x480 in the same APK. Frames are rendered only after a valid
+top+bottom field pair is assembled.

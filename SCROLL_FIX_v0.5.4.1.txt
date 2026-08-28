@@ -1,0 +1,6 @@
+UI-only fix:
+- Right-side controls are now inside a vertical ScrollView.
+- Scrollbar is always visible.
+- The control column stays 300dp wide.
+- All camera buttons remain accessible on smaller landscape screens.
+- Video/stream logic from v0.5.4 is unchanged.
