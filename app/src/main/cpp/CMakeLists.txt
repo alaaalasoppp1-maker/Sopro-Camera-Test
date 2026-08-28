@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(soproiso)
+add_library(soproiso SHARED native_iso.cpp)
+find_library(log-lib log)
+target_link_libraries(soproiso ${log-lib})
