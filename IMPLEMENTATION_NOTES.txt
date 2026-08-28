@@ -1,0 +1,9 @@
+Implementation basis:
+- EM28xx bridge register access and capture-start sequence follow Linux em28xx.
+- EM28xx I2C USB request address is the 7-bit client address shifted left by one.
+- External analog decoder default bridge path uses YUV422 + CCIR656 interlaced input.
+- SAA7113 register profile follows the Linux saa7113 initialization table.
+- EM28xx analog stream packet headers parsed by this app:
+  22 5A .. .. = video field start
+  88 88 88 88 = continuation
+- Native layer uses Android usbfs ISO URBs through the already-authorized UsbDeviceConnection file descriptor.

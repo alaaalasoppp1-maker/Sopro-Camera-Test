@@ -1,0 +1,13 @@
+v0.5.4 targets the two remaining visible artifacts from v0.5.3:
+
+1. "Images over each other": switched from weave deinterlacing to BOB. A complete
+   top or bottom field is displayed by doubling its lines, so frames from two
+   different instants are never mixed.
+
+2. Heavy red color: SAA7113 is now explicitly configured for NTSC-M/525-60 first,
+   matching the 720x480 stream that became stable in v0.5.3. Output remains YUYV as
+   Linux em28xx expects. A visible COLOR MODE button cycles AUTO/YUYV/YVYU/UYVY/VYUY
+   in the same APK, so a remaining chroma-order issue can be corrected without a new build.
+
+The native ISO queue remains continuous. Queue size is slightly reduced to improve
+startup reliability after the errno=12 starts seen in v0.5.3.
