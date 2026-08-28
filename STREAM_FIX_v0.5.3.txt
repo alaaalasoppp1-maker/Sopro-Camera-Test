@@ -1,8 +1,0 @@
-v0.5.3 fixes the severe tearing/corruption seen in v0.5.2.
-
-- Uses 8 continuously queued ISO URBs instead of one-at-a-time URBs.
-- Resubmits each URB immediately after reaping to avoid dropped chunks.
-- Restores EM28xx VINMODE 0x10 (CbYCrY) for the external SAA7113 decoder.
-- Selects the first ISO alt meeting Linux em28xx bandwidth requirement: 2888 B/microframe; on this camera alt object 6 = 2892.
-- Drops fields below 90% completeness instead of rendering corrupted blocks.
-- Prevents stale TOP/BOTTOM fields from being paired across frames.
