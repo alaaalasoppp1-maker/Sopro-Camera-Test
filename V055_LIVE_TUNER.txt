@@ -1,0 +1,32 @@
+v0.5.5 Live Tuner
+
+Purpose:
+Keep the working PAL stream and tune the remaining red cast / duplicated-field
+appearance live, inside ONE APK.
+
+New live controls:
+- SOURCE REG02: cycles 0xC0 / 0xC1 / 0xC2 / 0xC3 on SAA7113 register 0x02
+- FIELD MODE: BOB ALT / TOP only / BOTTOM only / WEAVE
+- FIELD POLARITY: NORMAL / INVERTED
+- SATURATION: cycles 0x00 / 0x20 / 0x40 / 0x60 / 0x7F
+- HUE: cycles several raw SAA7113 register 0x0D values
+- Existing COLOR MODE remains available
+
+All controls are inside the right-side vertical ScrollView.
+
+Recommended tuning order after START CAMERA:
+1) FIELD MODE -> BOB TOP, then BOB BOTTOM. Keep the one that looks least duplicated.
+2) FIELD POLARITY -> toggle once and compare.
+3) SOURCE REG02 -> cycle all 4 values and look for natural color/cleanest image.
+4) SATURATION -> 0x00 is a diagnostic grayscale check. If grayscale is clean,
+   the remaining issue is chroma decoding/source selection rather than USB.
+5) HUE and COLOR MODE only after source/field mode is correct.
+
+Git workflow:
+Do NOT delete the repository each version.
+Extract new package over your existing local repository, replacing files, then run:
+  git add -A
+  git commit -m "Update Sopro Camera Player"
+  git push
+
+UPDATE_GITHUB.bat is included to do those commands for you.

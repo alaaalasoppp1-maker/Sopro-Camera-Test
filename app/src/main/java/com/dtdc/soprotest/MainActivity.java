@@ -37,6 +37,17 @@ public class MainActivity extends Activity {
     // 0=AUTO, 1=YUYV, 2=YVYU, 3=UYVY, 4=VYUY
     private int colorMode = 0;
     private Button btnColor;
+    private Button btnSource, btnFieldMode, btnPolarity, btnSaturation, btnHue;
+    // Live tuning state. These controls change the running decoder/renderer
+    // without rebuilding another APK.
+    private int sourceIndex = 2; // starts at current SAA7113 reg 0x02 = 0xC2
+    private final int[] sourceValues = {0xC0, 0xC1, 0xC2, 0xC3};
+    private int fieldMode = 0; // 0=alternate BOB, 1=top only, 2=bottom only, 3=weave
+    private boolean invertFieldPolarity = false;
+    private int saturationIndex = 2;
+    private final int[] saturationValues = {0x00, 0x20, 0x40, 0x60, 0x7F};
+    private int hueIndex = 0;
+    private final int[] hueValues = {0x00, 0x10, 0x20, 0x40, 0x80, 0xC0, 0xE0, 0xF0};
 
     public native boolean nativeIsoStart(int fd, int endpoint, int packetSize, int packetCount, int urbCount);
     public native byte[] nativeIsoRead(int timeoutMs);
@@ -89,9 +100,22 @@ public class MainActivity extends Activity {
         findViewById(R.id.btnSave).setOnClickListener(v -> saveCaptured());
         btnColor = findViewById(R.id.btnColor);
         btnColor.setOnClickListener(v -> cycleColorMode());
+
+        btnSource = findViewById(R.id.btnSource);
+        btnFieldMode = findViewById(R.id.btnFieldMode);
+        btnPolarity = findViewById(R.id.btnPolarity);
+        btnSaturation = findViewById(R.id.btnSaturation);
+        btnHue = findViewById(R.id.btnHue);
+
+        btnSource.setOnClickListener(v -> cycleSourceMode());
+        btnFieldMode.setOnClickListener(v -> cycleFieldMode());
+        btnPolarity.setOnClickListener(v -> toggleFieldPolarity());
+        btnSaturation.setOnClickListener(v -> cycleSaturation());
+        btnHue.setOnClickListener(v -> cycleHue());
+
         findViewById(R.id.btnCopyLog).setOnClickListener(v -> copyLog());
 
-        append("Sopro Camera Player v0.5.4.2");
+        append("Sopro Camera Player v0.5.5");
         append("Target EB1A:2821 / EM2820-family");
         append("Includes corrected EM28xx I2C addressing + native ISO 0x82 engine.");
         scan();
@@ -442,7 +466,7 @@ public class MainActivity extends Activity {
         if ("SAA7113".equals(p) || "SOPRO_NTSC".equals(p) || "SOPRO_PAL".equals(p)) {
             // Linux saa7113_init table, sent to 7-bit 0x25 (raw USB index 0x4A)
             int[][] t = {
-                    {0x01,0x08},{0x02,0xC2},{0x03,0x30},{0x04,0x00},{0x05,0x00},
+                    {0x01,0x08},{0x02,sourceValues[sourceIndex]},{0x03,0x30},{0x04,0x00},{0x05,0x00},
                     {0x06,0x89},{0x07,0x0D},{0x08,0x88},{0x09,0x01},{0x0A,0x80},
                     {0x0B,0x47},{0x0C,0x40},{0x0D,0x00},{0x0E,0x01},{0x0F,0x2A},
                     {0x10,0x08},{0x11,0x0C},{0x12,0x07},{0x13,0x00},{0x14,0x00},
@@ -527,6 +551,59 @@ public class MainActivity extends Activity {
     }
 
     private String hex(int v){ return v<0 ? "ERR" : String.format(Locale.US,"0x%02X",v); }
+
+
+    private void cycleSourceMode() {
+        sourceIndex = (sourceIndex + 1) % sourceValues.length;
+        int v = sourceValues[sourceIndex];
+        if (conn != null) {
+            boolean ok = i2cWriteReg8(0x25, 0x02, v);
+            append(String.format(Locale.US,
+                    "Live source mux REG02 -> 0x%02X result=%s", v, ok));
+        }
+        if (btnSource != null)
+            btnSource.setText(String.format(Locale.US, "SOURCE REG02: 0x%02X", v));
+    }
+
+    private void cycleFieldMode() {
+        fieldMode = (fieldMode + 1) % 4;
+        String[] names = {"BOB ALT", "BOB TOP", "BOB BOTTOM", "WEAVE"};
+        if (btnFieldMode != null) btnFieldMode.setText("FIELD MODE: " + names[fieldMode]);
+        append("Field display mode changed to " + names[fieldMode]);
+        assembler.resetDisplayPair();
+    }
+
+    private void toggleFieldPolarity() {
+        invertFieldPolarity = !invertFieldPolarity;
+        if (btnPolarity != null)
+            btnPolarity.setText("FIELD POLARITY: " + (invertFieldPolarity ? "INVERTED" : "NORMAL"));
+        append("Field polarity = " + (invertFieldPolarity ? "INVERTED" : "NORMAL"));
+        assembler.resetDisplayPair();
+    }
+
+    private void cycleSaturation() {
+        saturationIndex = (saturationIndex + 1) % saturationValues.length;
+        int v = saturationValues[saturationIndex];
+        if (conn != null) {
+            boolean ok = i2cWriteReg8(0x25, 0x0C, v);
+            append(String.format(Locale.US,
+                    "Live saturation REG0C -> 0x%02X result=%s", v, ok));
+        }
+        if (btnSaturation != null)
+            btnSaturation.setText(String.format(Locale.US, "SATURATION: 0x%02X", v));
+    }
+
+    private void cycleHue() {
+        hueIndex = (hueIndex + 1) % hueValues.length;
+        int v = hueValues[hueIndex];
+        if (conn != null) {
+            boolean ok = i2cWriteReg8(0x25, 0x0D, v);
+            append(String.format(Locale.US,
+                    "Live hue REG0D -> 0x%02X result=%s", v, ok));
+        }
+        if (btnHue != null)
+            btnHue.setText(String.format(Locale.US, "HUE: 0x%02X", v));
+    }
 
     private void cycleColorMode() {
         colorMode = (colorMode + 1) % 5;
@@ -697,6 +774,7 @@ public class MainActivity extends Activity {
                 dataLen -= 4;
             } else if (fieldStart) {
                 boolean newTop = ((p[off + 2] & 1) == 0);
+                if (invertFieldPolarity) newTop = !newTop;
                 if (haveField) finishCurrentField(render);
                 if (newTop) { topReady = false; bottomReady = false; }
                 currentTop = newTop;
@@ -727,10 +805,27 @@ public class MainActivity extends Activity {
                 if (currentTop) topReady = true;
                 else bottomReady = true;
 
-                // Dental camera motion looks much cleaner with BOB deinterlace:
-                // display one complete field at a time and duplicate its lines.
-                // This avoids combining two fields captured at different moments.
-                if (render) renderBobField(currentTop);
+                if (render) {
+                    switch (fieldMode) {
+                        case 1: // TOP only
+                            if (currentTop) renderBobField(true);
+                            break;
+                        case 2: // BOTTOM only
+                            if (!currentTop) renderBobField(false);
+                            break;
+                        case 3: // WEAVE after both complete
+                            if (topReady && bottomReady) {
+                                renderWeaveFrame();
+                                topReady = false;
+                                bottomReady = false;
+                            }
+                            break;
+                        case 0:
+                        default: // alternate BOB
+                            renderBobField(currentTop);
+                            break;
+                    }
+                }
             } else if (completedFields <= 20) {
                 append("Dropped incomplete "+(currentTop ? "TOP" : "BOTTOM")+
                         " field: "+fieldBytes+"/"+expected);
@@ -758,6 +853,39 @@ public class MainActivity extends Activity {
             }
         }
 
+
+        synchronized void resetDisplayPair() {
+            topReady = false;
+            bottomReady = false;
+        }
+
+        private void renderWeaveFrame() {
+            int mode = colorMode;
+            if (mode == 0) mode = chooseAutoColorMode(yuyv, width, height);
+            int[] argb = decodePackedFrame(yuyv, mode);
+            Bitmap bmp = Bitmap.createBitmap(argb, width, height, Bitmap.Config.ARGB_8888);
+            onFrame(bmp);
+        }
+
+        private int[] decodePackedFrame(byte[] packed, int mode) {
+            int[] argb = new int[width * height];
+            int out = 0;
+            for (int i = 0; i + 3 < packed.length && out + 1 < argb.length; i += 4) {
+                int a=packed[i]&255, b=packed[i+1]&255, c=packed[i+2]&255, d=packed[i+3]&255;
+                int y0,u,y1,v;
+                switch(mode){
+                    case 2: y0=a; v=b; y1=c; u=d; break;
+                    case 3: u=a; y0=b; v=c; y1=d; break;
+                    case 4: v=a; y0=b; u=c; y1=d; break;
+                    case 1:
+                    default: y0=a; u=b; y1=c; v=d; break;
+                }
+                argb[out++] = yuvToArgb(y0,u,v);
+                argb[out++] = yuvToArgb(y1,u,v);
+            }
+            return argb;
+        }
+
         private void renderBobField(boolean top) {
             int fieldLines = height / 2;
             int bytesPerLine = width * 2;
@@ -776,22 +904,7 @@ public class MainActivity extends Activity {
 
             int mode = colorMode;
             if (mode == 0) mode = chooseAutoColorMode(bob, width, height);
-            int[] argb = new int[width * height];
-            int out = 0;
-
-            for (int i = 0; i + 3 < bob.length && out + 1 < argb.length; i += 4) {
-                int a=bob[i]&255, b=bob[i+1]&255, c=bob[i+2]&255, d=bob[i+3]&255;
-                int y0,u,y1,v;
-                switch(mode){
-                    case 2: y0=a; v=b; y1=c; u=d; break;      // YVYU
-                    case 3: u=a; y0=b; v=c; y1=d; break;      // UYVY
-                    case 4: v=a; y0=b; u=c; y1=d; break;      // VYUY
-                    case 1:
-                    default: y0=a; u=b; y1=c; v=d; break;     // YUYV
-                }
-                argb[out++] = yuvToArgb(y0,u,v);
-                argb[out++] = yuvToArgb(y1,u,v);
-            }
+            int[] argb = decodePackedFrame(bob, mode);
 
             Bitmap bmp=Bitmap.createBitmap(argb,width,height,Bitmap.Config.ARGB_8888);
             onFrame(bmp);

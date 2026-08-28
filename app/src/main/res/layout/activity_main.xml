@@ -127,6 +127,37 @@
                 android:layout_height="50dp"
                 android:text="COLOR MODE: AUTO"/>
 
+                <Button
+                    android:id="@+id/btnSource"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:text="SOURCE REG02: 0xC2"/>
+
+                <Button
+                    android:id="@+id/btnFieldMode"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:text="FIELD MODE: BOB ALT"/>
+
+                <Button
+                    android:id="@+id/btnPolarity"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:text="FIELD POLARITY: NORMAL"/>
+
+                <Button
+                    android:id="@+id/btnSaturation"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:text="SATURATION: 0x40"/>
+
+                <Button
+                    android:id="@+id/btnHue"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:text="HUE: 0x00"/>
+
+
             <Space
                 android:layout_width="1dp"
                 android:layout_height="0dp"
