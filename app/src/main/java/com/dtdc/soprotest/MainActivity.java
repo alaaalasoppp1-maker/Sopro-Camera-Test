@@ -124,7 +124,7 @@ public class MainActivity extends Activity {
 
         findViewById(R.id.btnCopyLog).setOnClickListener(v -> copyLog());
 
-        append("Sopro Camera Player v0.5.6");
+        append("Sopro Camera Player v0.5.7");
         append("Target EB1A:2821 / EM2820-family");
         append("Includes corrected EM28xx I2C addressing + native ISO 0x82 engine.");
         scan();
@@ -165,48 +165,27 @@ public class MainActivity extends Activity {
         selectedIsoPacketSize = 0;
         selectedAltObjectIndex = -1;
 
-        int bestEffective = -1;
+        // v0.5.7: exact Windows Sopro capture uses interface 0 alternate setting 2.
+        // On this device Android exposes alt2 with raw wMaxPacketSize 0x0AD4 = 724 bytes x2 = 1448 effective.
         for (int i=0;i<device.getInterfaceCount();i++) {
             UsbInterface in = device.getInterface(i);
             if (in.getId()!=0) continue;
-
             int rawMax = -1;
             for (int e=0;e<in.getEndpointCount();e++) {
                 UsbEndpoint ep = in.getEndpoint(e);
                 if (ep.getAddress()==0x82) rawMax = ep.getMaxPacketSize();
             }
-
             if (rawMax == 0) alt0 = in;
-
             if (rawMax > 0) {
                 int payload = rawMax & 0x7FF;
                 int mult = 1 + ((rawMax >> 11) & 0x3);
                 int effective = payload * mult;
                 append(String.format(Locale.US,
-                        "ISO alt object %d raw=0x%04X payload=%d mult=%d effective=%d",
-                        i, rawMax, payload, mult, effective));
-                int required = (720 * 2 + 4) * 2;
-                if (selectedAlt == null && effective >= required) {
+                        "ISO alt object %d raw=0x%04X effective=%d", i, rawMax, effective));
+                if (rawMax == 0x0AD4) {
                     selectedAlt = in;
                     selectedIsoPacketSize = effective;
                     selectedAltObjectIndex = i;
-                }
-                if (effective > bestEffective) bestEffective = effective;
-            }
-        }
-
-        if (selectedAlt == null) {
-            for (int i=0;i<device.getInterfaceCount();i++) {
-                UsbInterface in = device.getInterface(i);
-                if (in.getId()!=0) continue;
-                for (int e=0;e<in.getEndpointCount();e++) {
-                    UsbEndpoint ep=in.getEndpoint(e);
-                    if (ep.getAddress()!=0x82 || ep.getMaxPacketSize()<=0) continue;
-                    int raw=ep.getMaxPacketSize();
-                    int payload=raw & 0x7FF;
-                    int mult=1+((raw>>11)&0x3);
-                    int effective=payload*mult;
-                    if(effective==bestEffective){ selectedAlt=in; selectedIsoPacketSize=effective; selectedAltObjectIndex=i; }
                 }
             }
         }
@@ -218,7 +197,7 @@ public class MainActivity extends Activity {
 
         append("Selected ISO alt object="+selectedAltObjectIndex+
                 " effectivePacket="+selectedIsoPacketSize+
-                " (Linux-style minimum for 720 full-height is 2888)");
+                " (Windows Sopro alt2 replay)");
         boolean claimed = conn.claimInterface(alt0, true);
         boolean sel = claimed && conn.setInterface(alt0);
         append("✓ USB open; claim="+claimed+" alt0="+sel);
@@ -240,10 +219,9 @@ public class MainActivity extends Activity {
             append("Using confirmed decoder I2C address: 0x25");
 
             List<VideoProfile> profiles = new ArrayList<>();
-            // The camera produced complete stable fields at 720x480 in v0.5.3.
-            // Configure that standard explicitly first, then keep one PAL fallback.
-            profiles.add(new VideoProfile("Sopro NTSC 720x480", "SOPRO_NTSC", 720, 480));
-            profiles.add(new VideoProfile("Sopro PAL 720x576", "SOPRO_PAL", 720, 576));
+            // USBPcap golden trace: the Sopro driver captures a 704x288 source and scales it
+            // with H=0x1000 / V=0x0333, yielding the classic 352x240 output.
+            profiles.add(new VideoProfile("Sopro Windows Replay 352x240", "SOPRO_WINDOWS", 352, 240));
 
             boolean started = false;
 
@@ -433,84 +411,57 @@ public class MainActivity extends Activity {
     }
 
     private boolean configureBridgeGeometry(int width, int height) {
-        int cwidth = (width >> 2) & 0xFF;
-        int cheight = (height >> 2) & 0xFF;
-        int overflow = ((height >> 9) & 0x02) | ((width >> 10) & 0x01);
-
+        // Exact bridge geometry observed in sopro_good.pcap (known-good Windows driver).
         boolean ok = true;
-        ok &= writeReg(0x27, 0x34);
-        ok &= writeReg(0x10, 0x10);
-        ok &= writeReg(0x11, 0x11);
-
-        ok &= writeReg(0x1C, 0x00);
-        ok &= writeReg(0x1D, 0x00);
-        ok &= writeReg(0x1E, cwidth);
-        ok &= writeReg(0x1F, cheight);
-        ok &= writeReg(0x1B, overflow);
-
         ok &= writeReg(0x28, 0x01);
-        ok &= writeReg(0x29, ((width - 4) >> 2) & 0xFF);
+        ok &= writeReg(0x29, 0xAF);
         ok &= writeReg(0x2A, 0x01);
-        ok &= writeReg(0x2B, ((height - 4) >> 2) & 0xFF);
-
-        ok &= writeReg(0x30, 0x00);
-        ok &= writeReg(0x31, 0x00);
-        ok &= writeReg(0x32, 0x00);
-        ok &= writeReg(0x33, 0x00);
-        ok &= writeReg(0x26, 0x00);
-
-        append("Geometry "+width+"x"+height+
-                " cwidth="+cwidth+" cheight="+cheight+
-                " overflow="+hex(overflow)+" ok="+ok);
+        ok &= writeReg(0x2B, 0x47);
+        ok &= writeReg(0x1B, 0x00);
+        ok &= writeReg(0x1C, 0x08);
+        ok &= writeReg(0x1D, 0x00);
+        ok &= writeReg(0x1E, 0xB0);
+        ok &= writeReg(0x1F, 0x48);
+        ok &= writeReg(0x26, 0x10);
+        ok &= writeRegBurst(0x30, new byte[]{0x00,0x10});
+        ok &= writeReg(0x26, 0x30);
+        ok &= writeRegBurst(0x32, new byte[]{0x33,0x03});
+        ok &= writeReg(0x21, 0x08);
+        ok &= writeReg(0x20, 0x10);
+        ok &= i2cWriteBurstRaw(0x4A, new byte[]{0x0D,0x00});
+        ok &= writeReg(0x22, 0x10);
+        ok &= writeReg(0x14, 0x32);
+        ok &= writeReg(0x25, 0x02);
+        ok &= writeReg(0x26, 0x30);
+        append("Windows geometry replay: source=704x288 scaler H=0x1000 V=0x0333 output=352x240 ok="+ok);
         return ok;
     }
 
     private boolean applyProfile(String p) {
+        if (!"SOPRO_WINDOWS".equals(p)) return false;
         boolean ok = true;
-        ok &= writeReg(0x20, 0x10);
-        ok &= writeReg(0x21, 0x00);
-        ok &= writeReg(0x22, 0x10);
-        ok &= writeReg(0x25, 0x00);
+        // Exact pre-decoder bridge state from the Windows Sopro trace.
+        ok &= writeReg(0x08, 0xFA);
+        ok &= writeReg(0x06, 0x40);
+        ok &= writeReg(0x15, 0x20); ok &= writeReg(0x16, 0x20); ok &= writeReg(0x17, 0x20);
+        ok &= writeReg(0x18, 0x00); ok &= writeReg(0x19, 0x00); ok &= writeReg(0x1A, 0x00);
+        ok &= writeReg(0x23, 0x00); ok &= writeReg(0x24, 0x00); ok &= writeReg(0x26, 0x00);
+        ok &= writeReg(0x13, 0x08); ok &= writeReg(0x12, 0x27); ok &= writeReg(0x0C, 0x10);
+        ok &= writeReg(0x27, 0x00); ok &= writeReg(0x10, 0x00); ok &= writeReg(0x11, 0x11);
 
-        if ("SAA7113".equals(p) || "SOPRO_NTSC".equals(p) || "SOPRO_PAL".equals(p)) {
-            // Linux saa7113_init table, sent to 7-bit 0x25 (raw USB index 0x4A)
-            int[][] t = {
-                    {0x01,0x08},{0x02,routeReg02Value(sourceIds[sourceIndex])},{0x03,0x30},{0x04,0x00},{0x05,0x00},
-                    {0x06,0x89},{0x07,0x0D},{0x08,0x88},{0x09,0x01},{0x0A,0x80},
-                    {0x0B,0x47},{0x0C,0x40},{0x0D,0x00},{0x0E,0x01},{0x0F,0x2A},
-                    {0x10,0x08},{0x11,0x0C},{0x12,0x07},{0x13,0x00},{0x14,0x00},
-                    {0x15,0x00},{0x16,0x00},{0x17,0x00}
-            };
-            int good=0;
-            for (int[] rv: t) if (i2cWriteReg8(0x25, rv[0], rv[1])) good++;
-            append("SAA7113 writes ACK = "+good+"/"+t.length);
-            ok &= good >= 16;
-
-            // Apply complete Linux-style routing, including chroma-trap bypass
-            // for S-Video/Y-C modes.
-            ok &= applySourceRoute(sourceIds[sourceIndex]);
-
-            if ("SOPRO_NTSC".equals(p)) {
-                // Linux SAA7113 525/60 selection: clear auto-detect and set FSEL.
-                int r08 = i2cReadReg8(0x25, 0x08);
-                if (r08 >= 0) ok &= i2cWriteReg8(0x25, 0x08, (r08 & ~0xC0) | 0x40);
-                int r0e = i2cReadReg8(0x25, 0x0E);
-                if (r0e >= 0) ok &= i2cWriteReg8(0x25, 0x0E, r0e & 0x8F); // NTSC-M chroma
-                append("SAA7113 forced to NTSC-M / 525-60");
-            } else if ("SOPRO_PAL".equals(p)) {
-                int r08 = i2cReadReg8(0x25, 0x08);
-                if (r08 >= 0) ok &= i2cWriteReg8(0x25, 0x08, r08 & ~0xC0);
-                int r0e = i2cReadReg8(0x25, 0x0E);
-                if (r0e >= 0) ok &= i2cWriteReg8(0x25, 0x0E, r0e & 0x8F); // PAL B/G/D/H/I
-                append("SAA7113 forced to PAL / 625-50");
-            }
-        } else if ("GENERIC_ANALOG".equals(p)) {
-            // Keep decoder state untouched, bridge only.
-            append("Generic analog bridge profile applied.");
-        } else {
-            append("Bridge-only profile applied.");
-        }
-
+        // Exact SAA7113/GM7113 writes as grouped by the original driver.
+        ok &= i2cWriteBurstRaw(0x4A, new byte[]{0x01,0x08});
+        ok &= i2cWriteBurstRaw(0x4A, new byte[]{0x03,0x30});
+        ok &= i2cWriteBurstRaw(0x4A, new byte[]{0x06,(byte)0xEB,0x0D,(byte)0x88,0x01});
+        ok &= i2cWriteBurstRaw(0x4A, new byte[]{0x0A,(byte)0x80,0x47,0x40,0x00});
+        ok &= i2cWriteBurstRaw(0x4A, new byte[]{0x0F,0x2A});
+        ok &= i2cWriteBurstRaw(0x4A, new byte[]{0x10,0x08,0x0C,(byte)0xE7,0x00});
+        ok &= i2cWriteBurstRaw(0x4A, new byte[]{0x0A,(byte)0x80});
+        ok &= i2cWriteBurstRaw(0x4A, new byte[]{0x0E,0x11});
+        ok &= i2cWriteBurstRaw(0x4A, new byte[]{0x08,0x48});
+        ok &= i2cWriteBurstRaw(0x4A, new byte[]{0x02,(byte)0xC0});
+        ok &= writeReg(0x11, 0x11);
+        append("Windows decoder replay applied ok="+ok);
         return ok;
     }
 
@@ -536,8 +487,10 @@ public class MainActivity extends Activity {
         boolean ok=true;
         if (r0c>=0) ok &= writeReg(0x0C,(r0c|0x10)&0xff);
         ok &= writeReg(0x48,0x00);
+        ok &= writeReg(0x27,0x00);
         ok &= writeReg(0x12,0x67);
         sleep(12);
+        ok &= writeReg(0x27,0x34);
         append("Bridge capture start="+ok+" R12="+hex(readReg(0x12)));
         return ok;
     }
@@ -554,6 +507,19 @@ public class MainActivity extends Activity {
         byte[] b=new byte[1];
         int r=conn.controlTransfer(0xC0,0x00,0,reg,b,1,300);
         return r==1 ? b[0]&0xff : -1;
+    }
+
+    private boolean writeRegBurst(int reg, byte[] values) {
+        if (conn==null) return false;
+        int r=conn.controlTransfer(0x40,0x00,0,reg,values,values.length,350);
+        return r==values.length;
+    }
+
+    private boolean i2cWriteBurstRaw(int rawAddr, byte[] values) {
+        if (conn==null) return false;
+        int r=conn.controlTransfer(0x40,0x02,0,rawAddr,values,values.length,350);
+        int st=readReg(0x05);
+        return r==values.length && st==0;
     }
 
     private boolean writeReg(int reg,int val) {

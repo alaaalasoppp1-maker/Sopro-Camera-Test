@@ -1,0 +1,10 @@
+DTDC Sopro Camera Player v0.5.7 — WINDOWS GOLDEN REPLAY
+
+Based directly on sopro_good.pcap captured from the known-good original Sopro Windows driver.
+Key changes:
+- Force interface 0 alternate setting 2 (raw wMaxPacketSize 0x0AD4, effective 1448 B).
+- Replay exact decoder I2C writes to raw address 0x4A.
+- Replay exact bridge capture geometry: 704x288 source window.
+- Replay scaler: R30/R31=00 10 and R32/R33=33 03.
+- Render expected scaled output as 352x240.
+- Keep persistent queued USBFS ISO engine from the proven v0.5.4.2 transport.
